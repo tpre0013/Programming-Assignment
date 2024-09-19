@@ -4,25 +4,31 @@ from dtls import do_patch, DtlsSocket
 # Apply DTLS patch
 do_patch()
 
-# AES encryption key
-AES_KEY = get_random_bytes(16)  # In practice, securely share this key between client and server
+# Pre-shared key for mutual authentication
+PSK = b'my_shared_secret_key'
 
-# Setup client socket for DTLS
-client_sock = DtlsSocket(socket.socket(socket.AF_INET, socket.SOCK_DGRAM), keyfile="client-key.pem", certfile="client-cert.pem")
+# Client callback for providing PSK to the server during handshake
+def psk_callback(hint):
+    print(f"Client received PSK identity hint: {hint}")
+    return PSK
+
+# Setup client socket (UDP + DTLS) using PSK for authentication
+client_sock = DtlsSocket(
+    socket.socket(socket.AF_INET, socket.SOCK_DGRAM),
+    psk_callback=psk_callback,  # Specify the PSK callback for client-side PSK validation
+    cipher_suites="PSK-AES128-CCM8"  # Specify a PSK cipher suite
+)
+
+# Connect to the server
 client_sock.connect(('127.0.0.1', 20220))
 
 # Data to send (plaintext)
-data = b'Hello from IoT device!'
+data = b'Hello from IoT device with PSK!'
 
-# Encrypt data using AES
-encrypted_data = encrypt_aes(data, AES_KEY)
-
-# Send encrypted message over DTLS
-client_sock.sendto(encrypted_data.encode('utf-8'), ('127.0.0.1', 20220))
+# Send encrypted message over DTLS with PSK
+client_sock.sendto(data, ('127.0.0.1', 20220))
 
 # Receive server's encrypted response
 response_data, addr = client_sock.recvfrom(1024)
+print(f"Received encrypted response from server: {response_data.decode('utf-8')}")
 
-# Decrypt the response
-decrypted_response = decrypt_aes(response_data.decode('utf-8'), AES_KEY)
-print(f"Decrypted response from server: {decrypted_response.decode('utf-8')}")
